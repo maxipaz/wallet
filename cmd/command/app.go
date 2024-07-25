@@ -11,11 +11,11 @@ import (
 func NewRootCommand(ctx context.Context) *cobra.Command {
 	rootCommand := &cobra.Command{
 		Use:   "wallet",
-		Short: "Run the shared wallet service",
+		Short: "run the wallet service",
 
 		PersistentPreRunE: config.Setup,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return errors.New("please specify a command: [deploy, monitor or run]")
+			return errors.New("command was not provided, please specify a command: deploy, monitor or run")
 		},
 	}
 
@@ -23,7 +23,7 @@ func NewRootCommand(ctx context.Context) *cobra.Command {
 		&config.Filename,
 		"config",
 		"f",
-		"config/local.yaml",
+		"config/config.yaml",
 		"Relative path to the config file",
 	)
 

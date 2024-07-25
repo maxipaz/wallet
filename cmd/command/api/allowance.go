@@ -2,16 +2,14 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/maxipaz/wallet/config"
-	"github.com/maxipaz/wallet/pkg/blockchain"
+	errs "github.com/maxipaz/wallet/internal/errors"
+	"github.com/maxipaz/wallet/internal/wallet"
 	"github.com/spf13/cobra"
+	"log/slog"
 )
-
-var ErrInvalidAllowanceAction = errors.New("invalid allowance action")
-var ErrInvalidAmountAction = errors.New("amount should be a positive value")
 
 var allowanceActions = map[string]struct{}{
 	"set":      {},
@@ -31,9 +29,9 @@ func NewAllowanceCommand(ctx context.Context) *cobra.Command {
 		Use:   "allowance",
 		Short: "Change the allowance for a beneficiary",
 		Run: func(cmd *cobra.Command, args []string) {
-			err := runAllowance(ctx, action, targetAddress, amount)
-			if err != nil {
-				fmt.Println("ERROR: " + err.Error())
+
+			if err := runAllowance(ctx, action, targetAddress, amount); err != nil {
+				slog.ErrorContext(ctx, "failed to run allowance", slog.String("error", err.Error()))
 			}
 		},
 	}
@@ -43,35 +41,42 @@ func NewAllowanceCommand(ctx context.Context) *cobra.Command {
 	allowanceCommand.Flags().StringVarP(&targetAddress, "target.address", "t", "", "Target address")
 	_ = allowanceCommand.MarkFlagRequired("action")
 	_ = allowanceCommand.MarkFlagRequired("target.address")
+
 	return allowanceCommand
 }
 
 func runAllowance(ctx context.Context, action string, targetAddress string, amount int64) error {
 	if _, ok := allowanceActions[action]; !ok {
-		return ErrInvalidAllowanceAction
+		return errs.ErrInvalidAllowanceAction
 	}
+
 	ctxCall, cancel := context.WithTimeout(ctx, config.App.Blockchain.TimeoutIn)
 	defer cancel()
+
 	client, err := ethclient.DialContext(ctxCall, config.App.Blockchain.WS)
 	if err != nil {
 		return err
 	}
-	runner := blockchain.NewAllowanceRunner(config.App.Blockchain.PrivateKey, config.App.Contract.Address)
+
+	defer client.Close()
+
+	runner := wallet.NewAllowanceRunner(config.App.Blockchain.PrivateKey, config.App.Contract.Address)
 
 	switch action {
-	case blockchain.GetAction:
+	case wallet.GetAction:
 		allowance, err := runner.GetAllowance(ctx, client, targetAddress)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get allowance: %w", err)
 		}
+
 		fmt.Printf("Current allowance for address %s is %d\n", targetAddress, allowance)
 	default:
 		if amount <= 0 {
-			return ErrInvalidAmountAction
+			return errs.ErrInvalidAmountAction
 		}
-		err = runner.ChangeAllowance(ctx, client, action, targetAddress, amount)
-		if err != nil {
-			return err
+
+		if err := runner.ChangeAllowance(ctx, client, action, targetAddress, amount); err != nil {
+			return fmt.Errorf("failed to change allowance: %w", err)
 		}
 	}
 

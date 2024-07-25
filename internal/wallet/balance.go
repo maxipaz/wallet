@@ -1,13 +1,14 @@
-package blockchain
+package wallet
 
 import (
 	"context"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	common2 "github.com/maxipaz/wallet/internal/common"
 )
 
 const (
-	AddressBalance = "address"
+	AddressBalance  = "address"
 	ContractBalance = "contract"
 )
 
@@ -18,14 +19,14 @@ type Balance interface {
 }
 
 type balance struct {
-	privateKey string
+	privateKey      string
 	contractAddress string
 }
 
 // NewBalanceRunner returns a new runner instance
 func NewBalanceRunner(privateKey string, contractAddress string) Balance {
 	return &balance{
-		privateKey: privateKey,
+		privateKey:      privateKey,
 		contractAddress: contractAddress,
 	}
 }
@@ -36,7 +37,7 @@ func (b *balance) GetContractBalance(ctx context.Context, client *ethclient.Clie
 	if err != nil {
 		return 0, err
 	}
-	return weiToEther(value).Int64(), nil
+	return common2.weiToEther(value).Int64(), nil
 }
 
 // GetAddressBalance returns the balance of a given address
@@ -45,5 +46,5 @@ func (b *balance) GetAddressBalance(ctx context.Context, client *ethclient.Clien
 	if err != nil {
 		return 0, err
 	}
-	return weiToEther(value).Int64(), nil
+	return common2.weiToEther(value).Int64(), nil
 }

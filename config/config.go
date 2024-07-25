@@ -8,6 +8,27 @@ import (
 	"time"
 )
 
+// AppConfig struct
+type AppConfig struct {
+	Blockchain BlockchainConfig
+	Contract   ContractConfig
+}
+
+// BlockchainConfig struct
+type BlockchainConfig struct {
+	Address    string `mapstructure:"address"`
+	WS         string `mapstructure:"ws"`
+	PrivateKey string `mapstructure:"pk"`
+	Timeout    string `mapstructure:"timeout"`
+	TimeoutIn  time.Duration
+}
+
+// ContractConfig struct
+type ContractConfig struct {
+	Address          string `mapstructure:"address"`
+	DefaultWeiFounds int64  `mapstructure:"default_wei_founds"`
+}
+
 // environmentPrefix prefix used to avoid environment variable names collisions
 const environmentPrefix = "SW"
 
@@ -25,29 +46,6 @@ var (
 	}
 )
 
-// AppConfig struct
-type AppConfig struct {
-	Blockchain BlockchainConfig
-	Contract ContractConfig
-}
-
-// BlockchainConfig struct
-type BlockchainConfig struct {
-	Address string `mapstructure:"address"`
-	WS string `mapstructure:"ws"`
-	PrivateKey string `mapstructure:"pk"`
-	Timeout string `mapstructure:"timeout"`
-	TimeoutIn time.Duration
-}
-
-// ContractConfig struct
-type ContractConfig struct {
-	Address string `mapstructure:"address"`
-	GasLimit int64 `mapstructure:"gas_limit"`
-	GasPrice int64 `mapstructure:"gas_price"`
-	WeiFounds int64 `mapstructure:"default_wei_founds"`
-}
-
 // Setup bind command flags and environment variables
 // The precedence to override a configuration is: flag -> environment variable -> configuration field
 func Setup(cmd *cobra.Command, _ []string) error {
@@ -60,8 +58,7 @@ func Setup(cmd *cobra.Command, _ []string) error {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	err := v.ReadInConfig()
-	if err != nil {
+	if err := v.ReadInConfig(); err != nil {
 		return err
 	}
 
@@ -72,10 +69,11 @@ func Setup(cmd *cobra.Command, _ []string) error {
 		_ = v.BindPFlag(env, cmd.Flags().Lookup(env))
 	}
 
-	err = v.Unmarshal(&App)
-	if err != nil {
+	if err := v.Unmarshal(&App); err != nil {
 		return err
 	}
+
+	var err error
 	App.Blockchain.TimeoutIn, err = time.ParseDuration(App.Blockchain.Timeout)
 	if err != nil {
 		return err

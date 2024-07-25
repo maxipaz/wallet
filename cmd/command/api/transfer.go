@@ -2,15 +2,12 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/maxipaz/wallet/config"
 	"github.com/maxipaz/wallet/pkg/blockchain"
 	"github.com/spf13/cobra"
 )
-
-var ErrInvalidTransferAction = errors.New("invalid transfer action")
 
 var transferActions = map[string]struct{}{
 	"send":    {},
@@ -24,12 +21,13 @@ func NewTransferCommand(ctx context.Context) *cobra.Command {
 		targetAddress string
 		amount        int64
 	)
+
 	transfersCommand := &cobra.Command{
 		Use:   "transfer",
 		Short: "Perform transfer operations",
 		Run: func(cmd *cobra.Command, args []string) {
-			err := runTransfers(ctx, action, targetAddress, amount)
-			if err != nil {
+
+			if err := runTransfers(ctx, action, targetAddress, amount); err != nil {
 				fmt.Println("ERROR: " + err.Error())
 			}
 		},
@@ -40,6 +38,7 @@ func NewTransferCommand(ctx context.Context) *cobra.Command {
 	transfersCommand.Flags().StringVarP(&targetAddress, "target.address", "t", "", "Target address")
 	_ = transfersCommand.MarkFlagRequired("action")
 	_ = transfersCommand.MarkFlagRequired("amount")
+
 	return transfersCommand
 }
 

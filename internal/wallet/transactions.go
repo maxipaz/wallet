@@ -1,4 +1,4 @@
-package blockchain
+package wallet
 
 import (
 	"context"
@@ -18,6 +18,7 @@ func processTransaction(ctx context.Context, tx *types.Transaction, operation st
 	if tx == nil {
 		return
 	}
+
 	_ = TransactionInfo{
 		Operation: operation,
 		Gas:       tx.Gas(),

@@ -1,25 +1,21 @@
-package blockchain
+package wallet
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
+	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	contracts "github.com/maxipaz/wallet/contracts/interfaces"
+	"github.com/maxipaz/wallet/internal/common"
 	"golang.org/x/sync/errgroup"
-	"log"
+	"log/slog"
 	"math/big"
 	"time"
 )
 
-// Monitor interface
-type Monitor interface {
-	Start(ctx context.Context, client *ethclient.Client) error
-}
-
-type monitor struct {
+type Monitor struct {
 	contractAddress string
 }
 
@@ -61,54 +57,56 @@ type OwnershipTransferredEvent struct {
 }
 
 // NewMonitor returns a new runner instance
-func NewMonitor(contractAddress string) Monitor {
-	return &monitor{
+func NewMonitor(contractAddress string) *Monitor {
+	return &Monitor{
 		contractAddress: contractAddress,
 	}
 }
 
 // Start register to listen blockchain events
-func (m *monitor) Start(ctx context.Context, client *ethclient.Client) error {
-	log.Printf("start monitoring at %s\n", m.contractAddress)
+func (m *Monitor) Start(ctx context.Context, client *ethclient.Client) error {
+	slog.DebugContext(ctx, "start monitoring", slog.String("contract_address", m.contractAddress))
 
-	err := validateContractAddress(ctx, client, m.contractAddress)
-	if err != nil {
-		return err
+	if err := common.ValidateContractAddress(ctx, client, m.contractAddress); err != nil {
+		return fmt.Errorf("failed to validate contract address: %w", err)
 	}
-	contract, err := contracts.NewContract(common.HexToAddress(m.contractAddress), client)
+
+	contract, err := contracts.NewContract(ethcommon.HexToAddress(m.contractAddress), client)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create contract instance: %w", err)
 	}
 
 	eg := new(errgroup.Group)
 	eg.Go(func() error {
 		return m.watchAllowanceChanged(ctx, contract)
 	})
+
 	eg.Go(func() error {
 		return m.watchMoneySent(ctx, contract)
 	})
+
 	eg.Go(func() error {
 		return m.watchMoneyReceived(ctx, contract)
 	})
+
 	eg.Go(func() error {
 		return m.watchOwnershipTransferred(ctx, contract)
 	})
-	if err = eg.Wait(); err != nil {
-		return err
-	}
-	return nil
+
+	return eg.Wait()
 }
 
-func (m *monitor) watchAllowanceChanged(ctx context.Context, contract *contracts.Contract) error {
+func (m *Monitor) watchAllowanceChanged(ctx context.Context, contract *contracts.Contract) error {
 	events := make(chan *contracts.ContractAllowanceChanged)
-	opts := &bind.WatchOpts{
+
+	subscription, err := contract.WatchAllowanceChanged(&bind.WatchOpts{
 		Start:   nil,
 		Context: ctx,
-	}
-	subscription, err := contract.WatchAllowanceChanged(opts, events, nil, nil)
+	}, events, nil, nil)
 	if err != nil {
 		return err
 	}
+
 	defer subscription.Unsubscribe()
 
 	for {
@@ -118,33 +116,39 @@ func (m *monitor) watchAllowanceChanged(ctx context.Context, contract *contracts
 		case errChan := <-subscription.Err():
 			return errChan
 		case event := <-events:
-			j, _ := json.MarshalIndent(
+			j, err := json.MarshalIndent(
 				AllowanceChangedEvent{
 					Event:       "AllowanceChanged",
 					Sender:      event.Sender.Hex(),
 					Beneficiary: event.Beneficiary.Hex(),
-					PrevAmount:  weiToEther(event.PrevAmount),
-					NewAmount:   weiToEther(event.NewAmount),
-					Timestamp:   time.Now(),
+					PrevAmount:  common.WeiToEther(event.PrevAmount),
+					NewAmount:   common.WeiToEther(event.NewAmount),
+					Timestamp:   time.Now().UTC(),
 				},
 				"",
 				"  ",
 			)
-			fmt.Println(string(j))
+			if err != nil {
+				slog.ErrorContext(ctx, "error marshaling AllowanceChanged event", slog.String("error", err.Error()))
+				continue
+			}
+
+			slog.DebugContext(ctx, "AllowanceChanged event received", slog.String("event", string(j)))
 		}
 	}
 }
 
-func (m *monitor) watchMoneySent(ctx context.Context, contract *contracts.Contract) error {
+func (m *Monitor) watchMoneySent(ctx context.Context, contract *contracts.Contract) error {
 	events := make(chan *contracts.ContractMoneySent)
-	opts := &bind.WatchOpts{
+
+	subscription, err := contract.WatchMoneySent(&bind.WatchOpts{
 		Start:   nil,
 		Context: ctx,
-	}
-	subscription, err := contract.WatchMoneySent(opts, events, nil)
+	}, events, nil)
 	if err != nil {
 		return err
 	}
+
 	defer subscription.Unsubscribe()
 
 	for {
@@ -154,29 +158,34 @@ func (m *monitor) watchMoneySent(ctx context.Context, contract *contracts.Contra
 		case errChan := <-subscription.Err():
 			return errChan
 		case event := <-events:
-			j, _ := json.MarshalIndent(
+			j, err := json.MarshalIndent(
 				MoneySentEvent{
 					Event:       "MoneySent",
 					Beneficiary: event.Beneficiary.Hex(),
 					BlockNumber: event.Raw.BlockNumber,
-					Amount:      weiToEther(event.Amount),
-					Timestamp:   time.Now(),
+					Amount:      common.WeiToEther(event.Amount),
+					Timestamp:   time.Now().UTC(),
 				},
 				"",
 				"  ",
 			)
-			fmt.Println(string(j))
+			if err != nil {
+				slog.ErrorContext(ctx, "error marshaling MoneySent event", slog.String("error", err.Error()))
+				continue
+			}
+
+			slog.DebugContext(ctx, "MoneySent event received", slog.String("event", string(j)))
 		}
 	}
 }
 
-func (m *monitor) watchMoneyReceived(ctx context.Context, contract *contracts.Contract) error {
+func (m *Monitor) watchMoneyReceived(ctx context.Context, contract *contracts.Contract) error {
 	events := make(chan *contracts.ContractMoneyReceived)
-	opts := &bind.WatchOpts{
+
+	subscription, err := contract.WatchMoneyReceived(&bind.WatchOpts{
 		Start:   nil,
 		Context: ctx,
-	}
-	subscription, err := contract.WatchMoneyReceived(opts, events, nil)
+	}, events, nil)
 	if err != nil {
 		return err
 	}
@@ -189,29 +198,34 @@ func (m *monitor) watchMoneyReceived(ctx context.Context, contract *contracts.Co
 		case errChan := <-subscription.Err():
 			return errChan
 		case event := <-events:
-			j, _ := json.MarshalIndent(
+			j, err := json.MarshalIndent(
 				MoneyReceivedEvent{
 					Event:       "MoneyReceived",
 					Sender:      event.From.Hex(),
 					BlockNumber: event.Raw.BlockNumber,
-					Amount:      weiToEther(event.Amount),
+					Amount:      common.WeiToEther(event.Amount),
 					Timestamp:   time.Now(),
 				},
 				"",
 				"  ",
 			)
-			fmt.Println(string(j))
+			if err != nil {
+				slog.ErrorContext(ctx, "error marshaling MoneyReceived event", slog.String("error", err.Error()))
+				continue
+			}
+
+			slog.DebugContext(ctx, "MoneyReceived event received", slog.String("event", string(j)))
 		}
 	}
 }
 
-func (m *monitor) watchOwnershipTransferred(ctx context.Context, contract *contracts.Contract) error {
+func (m *Monitor) watchOwnershipTransferred(ctx context.Context, contract *contracts.Contract) error {
 	events := make(chan *contracts.ContractOwnershipTransferred)
-	opts := &bind.WatchOpts{
+
+	subscription, err := contract.WatchOwnershipTransferred(&bind.WatchOpts{
 		Start:   nil,
 		Context: ctx,
-	}
-	subscription, err := contract.WatchOwnershipTransferred(opts, events, nil, nil)
+	}, events, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -224,7 +238,7 @@ func (m *monitor) watchOwnershipTransferred(ctx context.Context, contract *contr
 		case errChan := <-subscription.Err():
 			return errChan
 		case event := <-events:
-			j, _ := json.MarshalIndent(
+			j, err := json.MarshalIndent(
 				OwnershipTransferredEvent{
 					Event:         "OwnershipTransferred",
 					PreviousOwner: event.PreviousOwner.Hex(),
@@ -235,7 +249,12 @@ func (m *monitor) watchOwnershipTransferred(ctx context.Context, contract *contr
 				"",
 				"  ",
 			)
-			fmt.Println(string(j))
+			if err != nil {
+				slog.ErrorContext(ctx, "error marshaling OwnershipTransferred event", slog.String("error", err.Error()))
+				continue
+			}
+
+			slog.DebugContext(ctx, "OwnershipTransferred event received", slog.String("event", string(j)))
 		}
 	}
 }

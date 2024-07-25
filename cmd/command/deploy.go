@@ -4,9 +4,9 @@ import (
 	"context"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/maxipaz/wallet/config"
-	"github.com/maxipaz/wallet/pkg/blockchain"
+	deploy2 "github.com/maxipaz/wallet/internal/deploy"
 	"github.com/spf13/cobra"
-	"log"
+	"log/slog"
 )
 
 // NewDeployCommand creates the deploy command
@@ -18,22 +18,27 @@ func NewDeployCommand(ctx context.Context) *cobra.Command {
 			return deploy(ctx)
 		},
 	}
+
 	return deployCommand
 }
 
 func deploy(ctx context.Context) error {
-	log.Println("deploying contract")
+	slog.DebugContext(ctx, "deploying contract")
+
 	ctx, cancel := context.WithTimeout(ctx, config.App.Blockchain.TimeoutIn)
 	defer cancel()
+
 	client, err := ethclient.DialContext(ctx, config.App.Blockchain.Address)
 	if err != nil {
 		return err
 	}
-	deployer := blockchain.NewDeployer()
-	err = deployer.Deploy(ctx, client)
-	if err != nil {
+
+	deployer := deploy2.NewDeployer()
+
+	if err := deployer.Deploy(ctx, client); err != nil {
 		return err
 	}
-	log.Printf("contract deployed at address %s\n", deployer.ContractAddress())
+
+	slog.DebugContext(ctx, "contract deployed at address %s", deployer.ContractAddress())
 	return nil
 }

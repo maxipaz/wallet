@@ -1,4 +1,4 @@
-package blockchain
+package wallet
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	common2 "github.com/maxipaz/wallet/internal/common"
 	"math/big"
 )
 
@@ -21,31 +22,31 @@ type Transfers interface {
 }
 
 type transfers struct {
-	privateKey string
+	privateKey      string
 	contractAddress string
 }
 
 // NewTransfersRunner returns a new runner instance
 func NewTransfersRunner(privateKey string, contractAddress string) Transfers {
 	return &transfers{
-		privateKey: privateKey,
+		privateKey:      privateKey,
 		contractAddress: contractAddress,
 	}
 }
 
 // Receive method to receive founds in the contract
 func (t *transfers) Receive(ctx context.Context, client *ethclient.Client, amount int64) error {
-	contract, err := getContract(ctx, client, t.contractAddress)
+	contract, err := common2.getContract(ctx, client, t.contractAddress)
 	if err != nil {
 		return err
 	}
 
-	signer, err := getSigner(ctx, client)
+	signer, err := common2.getSigner(ctx, client)
 	if err != nil {
 		return err
 	}
 
-	signer.Value = etherToWei(big.NewInt(amount))
+	signer.Value = common2.etherToWei(big.NewInt(amount))
 	tx, txErr := contract.Receive(signer)
 	if txErr != nil {
 		return txErr
@@ -61,18 +62,18 @@ func (t *transfers) Receive(ctx context.Context, client *ethclient.Client, amoun
 
 // Send method to send founds to a beneficiary
 func (t *transfers) Send(ctx context.Context, client *ethclient.Client, target string, amount int64) error {
-	contract, err := getContract(ctx, client, t.contractAddress)
+	contract, err := common2.getContract(ctx, client, t.contractAddress)
 	if err != nil {
 		return err
 	}
 
-	signer, err := getSigner(ctx, client)
+	signer, err := common2.getSigner(ctx, client)
 	if err != nil {
 		return err
 	}
 
 	targetAddress := common.HexToAddress(target)
-	tx, txErr := contract.SendMoney(signer, targetAddress, etherToWei(big.NewInt(amount)))
+	tx, txErr := contract.SendMoney(signer, targetAddress, common2.etherToWei(big.NewInt(amount)))
 	if txErr != nil {
 		return txErr
 	}

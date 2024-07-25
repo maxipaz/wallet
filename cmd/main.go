@@ -3,37 +3,40 @@ package main
 import (
 	"context"
 	"github.com/maxipaz/wallet/cmd/command"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 )
 
-const closeFallbackTime = 3
+const shutdownTimeout = 5
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource: true,
+		Level:     slog.LevelDebug,
+	})))
+
+	shutdownSignal := make(chan os.Signal, 1)
+	signal.Notify(shutdownSignal, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
 	defer func() {
-		log.Println("closing application")
-		signal.Stop(signals)
+		slog.Debug("closing application")
+		signal.Stop(shutdownSignal)
 		cancel()
 	}()
 
 	go func() {
-		<-signals
-		log.Println("propagating cancel signal")
+		<-shutdownSignal
 		cancel()
-		time.Sleep(closeFallbackTime * time.Second)
-		log.Println("fallback exit")
+		time.Sleep(shutdownTimeout * time.Second)
+		slog.Debug("fallback exit")
 		os.Exit(1)
 	}()
 
-	cmd := command.NewRootCommand(ctx)
-	if err := cmd.Execute(); err != nil {
+	if err := command.NewRootCommand(ctx).Execute(); err != nil {
 		os.Exit(1)
 	}
 }

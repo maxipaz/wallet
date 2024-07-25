@@ -18,8 +18,11 @@ func NewRunnerCommand(ctx context.Context) *cobra.Command {
 	}
 
 	runCommand.AddCommand(api.NewAllowanceCommand(ctx))
+
+	// TODO: continue refactor with below methods
 	runCommand.AddCommand(api.NewTransferCommand(ctx))
 	runCommand.AddCommand(api.NewBalanceCommand(ctx))
 	runCommand.AddCommand(api.NewOwnershipCommand(ctx))
+
 	return runCommand
 }
